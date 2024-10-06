@@ -8,6 +8,15 @@ import imgui.Helpers.*;
 
 class Main extends Application {
 	var init:Bool = false;
+	var ready:Bool = false;
+
+	static var ImGui_Impl(get, never):Dynamic;
+	static var framePending:Bool = false;
+
+	inline static function get_ImGui_Impl():Dynamic
+		return untyped window.ImGui_Impl;
+
+	static var io:ImGuiIO = null;
 
 	public function new() {
 		super();
@@ -46,9 +55,44 @@ class Main extends Application {
 	static function loadImGui(done:() -> Void, canvas:Canvas2DRenderContext) {
 		loadScript('assets/imgui.umd.js', function(_) {
 			loadScript('assets/imgui_impl.umd.js', function(_) {
-				trace("finished loading scripts");
+				Reflect.field(untyped window.ImGui, 'default')().then(function() {
+					initImGui(done, canvas);
+				}, function() {
+					trace('Failed to load ImGui bindings');
+				});
 			});
 		});
+	}
+
+	static function initImGui(done:() -> Void, canvas:Canvas2DRenderContext) {
+		ImGui.createContext();
+		ImGui.styleColorsDark();
+		ImGui_Impl.Init(canvas);
+
+		io = ImGui.getIO();
+
+		done();
+	}
+
+	public static function newFrame():Void {
+		ImGui_Impl.NewFrame(haxe.Timer.stamp() * 1000);
+		ImGui.newFrame();
+
+		framePending = true;
+	}
+
+	public static function endFrame():Void {
+		if (!framePending)
+			return;
+		framePending = false;
+
+		ImGui.endFrame();
+		ImGui.render();
+
+		ImGui_Impl.RenderDrawData(ImGui.getDrawData());
+
+		// clay.Clay.app.runtime.skipKeyboardEvents = io.wantCaptureKeyboard;
+		// clay.Clay.app.runtime.skipMouseEvents = io.wantCaptureMouse;
 	}
 
 	public override function render(context:RenderContext):Void {
@@ -58,22 +102,31 @@ class Main extends Application {
 				var someFloat = 0.2;
 
 				if (!init) {
-					initialize(() -> {
-						ImGui.begin('Hello');
-
-						ImGui.sliderFloat('Some slider', fromFloat(someFloat), 0.0, 1.0);
-
-						if (someFloat == 1.0) {
-							ImGui.text('Float value is at MAX (1.0)');
-						}
-
-						ImGui.end();
-					}, ctx);
+					initialize(() -> ready = true, ctx);
 				}
+
+				// initGui(() -> {})
 
 				ctx.fillStyle = "#BFFF00";
 
 				ctx.fillRect(0, 0, window.width, window.height);
+
+				if (ready) {
+					trace("yo");
+					newFrame();
+
+					ImGui.begin('Hello');
+
+					ImGui.sliderFloat('Some slider', fromFloat(someFloat), 0.0, 1.0);
+
+					if (someFloat == 1.0) {
+						ImGui.text('Float value is at MAX (1.0)');
+					}
+
+					ImGui.end();
+
+					endFrame();
+				}
 
 			default:
 		}
